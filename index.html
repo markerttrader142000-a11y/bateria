@@ -183,6 +183,16 @@
   .gate-card input { width: 100%; padding: 10px 12px; font-size: 15px; text-align: center; border: 1px solid #d1d5db; border-radius: 8px; letter-spacing: 0.08em; }
   .gate-card button { margin-top: 10px; width: 100%; padding: 10px; font-size: 14px; font-weight: 600; background: #6366f1; color: #fff; border: none; border-radius: 8px; cursor: pointer; }
   .gate-err { color: #dc2626; font-size: 12px; min-height: 14px; margin: 8px 0 0 !important; }
+
+  /* mudar código */
+  .modal { position: fixed; inset: 0; z-index: 60; background: rgba(31,41,55,0.45); display: none; align-items: center; justify-content: center; padding: 24px 16px; }
+  .modal.open { display: flex; }
+  .chg-link { text-align: center; font-size: 11px; margin: 16px 0 2px; }
+  .chg-link a { color: #9ca3af; text-decoration: none; }
+  .chg-link a:hover { text-decoration: underline; }
+  .gate-card .chk { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: #4b5563; margin: 12px 0 0; text-align: left; line-height: 1.35; }
+  .gate-card .chk input { width: auto; margin-top: 1px; }
+  .gate-card button.sec { margin-top: 8px; background: #e5e7eb; color: #374151; }
 </style>
 </head>
 <body class="gate-locked">
@@ -193,6 +203,18 @@
     <input type="password" id="gateCode" maxlength="16" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Código">
     <button id="gateBtn" type="button">Entrar</button>
     <p class="gate-err" id="gateErr"></p>
+  </div>
+</div>
+<div class="modal" id="chg">
+  <div class="gate-card">
+    <h2>Mudar código de acesso</h2>
+    <p>Escreve o novo código duas vezes</p>
+    <input type="password" id="chgNew" maxlength="24" autocomplete="new-password" autocapitalize="characters" spellcheck="false" placeholder="Novo código">
+    <input type="password" id="chgRep" maxlength="24" autocomplete="new-password" autocapitalize="characters" spellcheck="false" placeholder="Repetir código" style="margin-top: 8px;">
+    <label class="chk"><input type="checkbox" id="chgAll" checked> Pedir o novo código em todos os dispositivos (recomendado)</label>
+    <button id="chgSave" type="button">Guardar novo código</button>
+    <button id="chgCancel" type="button" class="sec">Cancelar</button>
+    <p class="gate-err" id="chgErr"></p>
   </div>
 </div>
 <div class="card">
@@ -227,6 +249,7 @@
 
   <div class="breakdown" id="breakdown"></div>
   <div class="result neutral" id="result"></div>
+  <p class="chg-link"><a href="#" id="chgOpen">Mudar código de acesso</a></p>
 </div>
 
 <script>
@@ -536,10 +559,16 @@ window.addEventListener('pageshow', syncPull);
 
 <script>
 (function () {
-  var GATE_HASH = 'd5085ce946f54c44ba0291fcc8d0266e000ba4d8a3ea9b4f3c78f267d6368445';
-  var GATE_SALT = '0ac6f3cd582c079de8e0dbc68fa86589';
+  var CFG_URL = 'https://textdb.dev/api/data/bateria-a7e2c94f81d603b5-gate';
+  var FALLBACK = { v: 1, salt: '0ac6f3cd582c079de8e0dbc68fa86589', hash: 'd5085ce946f54c44ba0291fcc8d0266e000ba4d8a3ea9b4f3c78f267d6368445' };
+
   var body = document.body, gate = document.getElementById('gate'),
-      input = document.getElementById('gateCode'), err = document.getElementById('gateErr');
+      input = document.getElementById('gateCode'), err = document.getElementById('gateErr'),
+      chg = document.getElementById('chg'),
+      chgNew = document.getElementById('chgNew'), chgRep = document.getElementById('chgRep'),
+      chgAll = document.getElementById('chgAll'), chgErr = document.getElementById('chgErr');
+
+  var cfg = null;
 
   function hexToBytes(hex) {
     var out = new Uint8Array(hex.length / 2);
@@ -551,25 +580,68 @@ window.addEventListener('pageshow', syncPull);
       return ('0' + b.toString(16)).slice(-2);
     }).join('');
   }
-  function derive(code) {
+  function norm(s) { return String(s || '').replace(/\s+/g, '').toUpperCase(); }
+  function derive(code, saltHex) {
     var enc = new TextEncoder();
     return crypto.subtle.importKey('raw', enc.encode(code), 'PBKDF2', false, ['deriveBits'])
       .then(function (key) {
         return crypto.subtle.deriveBits(
-          { name: 'PBKDF2', hash: 'SHA-256', salt: hexToBytes(GATE_SALT), iterations: 250000 },
+          { name: 'PBKDF2', hash: 'SHA-256', salt: hexToBytes(saltHex), iterations: 250000 },
           key, 256);
       })
       .then(bytesToHex);
   }
-  function unlock() {
-    try { localStorage.setItem('bateria_acesso', '1'); } catch (e) {}
-    body.classList.remove('gate-locked');
+  function parseRemote(txt) {
+    txt = (txt || '').trim();
+    if (!txt) return null;
+    if (txt.indexOf('value=') === 0) txt = txt.slice(6);
+    try { return JSON.parse(txt); } catch (e) {
+      try { return JSON.parse(decodeURIComponent(txt)); } catch (e2) { return null; }
+    }
   }
+  function readUnlock() {
+    try {
+      var v = localStorage.getItem('bateria_acesso');
+      if (!v) return 0;
+      var m = /^\{"v":(\d+)\}$/.exec(v);
+      if (m) return parseInt(m[1], 10);
+      if (v === '1') return 1;
+      return 0;
+    } catch (e) { return 0; }
+  }
+  function writeUnlock(v) { try { localStorage.setItem('bateria_acesso', JSON.stringify({ v: v })); } catch (e) {} }
+  function unlock() { body.classList.remove('gate-locked'); }
+
+  function loadCfg() {
+    var cached = null;
+    try { cached = JSON.parse(localStorage.getItem('bateria_gate_cfg')); } catch (e) {}
+    var done = false;
+    function decide(c) {
+      if (done) return;
+      done = true;
+      cfg = (c && c.salt && c.hash) ? c : (cached && cached.salt && cached.hash ? cached : FALLBACK);
+      if (!cfg.v) cfg.v = 1;
+      if (readUnlock() >= cfg.v) unlock();
+      else { setTimeout(function () { input.focus(); }, 300); }
+    }
+    var to = setTimeout(function () { decide(null); }, 1500);
+    fetch(CFG_URL + '?t=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { return r && r.ok ? r.text() : null; })
+      .then(function (t) {
+        var c = t ? parseRemote(t) : null;
+        if (c && c.salt && c.hash) {
+          try { localStorage.setItem('bateria_gate_cfg', JSON.stringify(c)); } catch (e) {}
+        }
+        clearTimeout(to); decide(c);
+      })
+      .catch(function () { clearTimeout(to); decide(null); });
+  }
+
   function tryUnlock() {
-    var code = input.value.replace(/\s+/g, '').toUpperCase();
-    if (!code) return;
-    derive(code).then(function (h) {
-      if (h === GATE_HASH) { unlock(); }
+    var code = norm(input.value);
+    if (!code || !cfg) return;
+    derive(code, cfg.salt).then(function (h) {
+      if (h === cfg.hash) { writeUnlock(cfg.v); unlock(); }
       else {
         err.textContent = 'Código errado';
         input.value = '';
@@ -580,10 +652,46 @@ window.addEventListener('pageshow', syncPull);
   document.getElementById('gateBtn').addEventListener('click', tryUnlock);
   input.addEventListener('keydown', function (e) { if (e.key === 'Enter') tryUnlock(); });
 
-  var saved = null;
-  try { saved = localStorage.getItem('bateria_acesso'); } catch (e) {}
-  if (saved === '1') { unlock(); }
-  else { setTimeout(function () { input.focus(); }, 300); }
+  document.getElementById('chgOpen').addEventListener('click', function (e) {
+    e.preventDefault();
+    chgErr.style.color = ''; chgErr.textContent = '';
+    chgNew.value = ''; chgRep.value = ''; chgAll.checked = true;
+    chg.classList.add('open');
+    setTimeout(function () { chgNew.focus(); }, 100);
+  });
+  document.getElementById('chgCancel').addEventListener('click', function () { chg.classList.remove('open'); });
+  document.getElementById('chgSave').addEventListener('click', function () {
+    var c1 = norm(chgNew.value), c2 = norm(chgRep.value);
+    chgErr.style.color = '';
+    if (c1.length < 4) { chgErr.textContent = 'Código muito curto (mínimo 4 caracteres)'; return; }
+    if (c1 !== c2) { chgErr.textContent = 'Os códigos não coincidem'; return; }
+    var salt = bytesToHex(crypto.getRandomValues(new Uint8Array(16)));
+    derive(c1, salt).then(function (h) {
+      var base = (cfg && cfg.v) ? cfg.v : 1;
+      var nv = chgAll.checked ? base + 1 : base;
+      var nc = { v: nv, salt: salt, hash: h, updatedAt: Date.now() };
+      return fetch(CFG_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(nc)
+      }).then(function (r) {
+        if (!r.ok) throw new Error('post');
+        cfg = nc;
+        try { localStorage.setItem('bateria_gate_cfg', JSON.stringify(nc)); } catch (e) {}
+        writeUnlock(nv);
+        chgErr.style.color = '#059669';
+        chgErr.textContent = 'Código alterado ✓';
+        setTimeout(function () {
+          chg.classList.remove('open');
+          chgErr.textContent = ''; chgErr.style.color = '';
+        }, 1300);
+      });
+    }).catch(function () {
+      chgErr.textContent = 'Não deu — verifica a ligação e tenta outra vez';
+    });
+  });
+
+  loadCfg();
 })();
 </script>
 </body>
