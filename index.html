@@ -172,9 +172,29 @@
   .result.ok .verdict { color: #059669; }
   .result.bad .verdict { color: #dc2626; }
   .right { text-align: right; }
+
+  /* ecrã de acesso */
+  .gate { position: fixed; inset: 0; z-index: 50; background: #eef1f4; display: none; align-items: center; justify-content: center; padding: 24px 16px; }
+  .gate-locked .gate { display: flex; }
+  .gate-locked .card { display: none; }
+  .gate-card { background: #fff; border-radius: 14px; padding: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); width: 100%; max-width: 340px; text-align: center; }
+  .gate-card h2 { font-size: 16px; margin: 0 0 4px; }
+  .gate-card p { font-size: 12px; color: #6b7280; margin: 0 0 14px; }
+  .gate-card input { width: 100%; padding: 10px 12px; font-size: 15px; text-align: center; border: 1px solid #d1d5db; border-radius: 8px; letter-spacing: 0.08em; }
+  .gate-card button { margin-top: 10px; width: 100%; padding: 10px; font-size: 14px; font-weight: 600; background: #6366f1; color: #fff; border: none; border-radius: 8px; cursor: pointer; }
+  .gate-err { color: #dc2626; font-size: 12px; min-height: 14px; margin: 8px 0 0 !important; }
 </style>
 </head>
-<body>
+<body class="gate-locked">
+<div class="gate" id="gate">
+  <div class="gate-card">
+    <h2>Cálculo de Bateria</h2>
+    <p>Introduz o código de acesso</p>
+    <input type="password" id="gateCode" maxlength="16" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Código">
+    <button id="gateBtn" type="button">Entrar</button>
+    <p class="gate-err" id="gateErr"></p>
+  </div>
+</div>
 <div class="card">
   <h1>Cálculo de bateria</h1>
   <p class="sub"><span id="syncState" class="sync-state" title="Última sincronização entre dispositivos"></span>Necessidade = taxa (%/h) × horas até ao objetivo + gastos extra previstos (com janela de tempo).</p>
@@ -512,6 +532,59 @@ setInterval(syncPull, POLL_EVERY);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) syncPull(); });
 window.addEventListener('focus', syncPull);
 window.addEventListener('pageshow', syncPull);
+</script>
+
+<script>
+(function () {
+  var GATE_HASH = 'd5085ce946f54c44ba0291fcc8d0266e000ba4d8a3ea9b4f3c78f267d6368445';
+  var GATE_SALT = '0ac6f3cd582c079de8e0dbc68fa86589';
+  var body = document.body, gate = document.getElementById('gate'),
+      input = document.getElementById('gateCode'), err = document.getElementById('gateErr');
+
+  function hexToBytes(hex) {
+    var out = new Uint8Array(hex.length / 2);
+    for (var i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
+    return out;
+  }
+  function bytesToHex(buf) {
+    return Array.prototype.map.call(new Uint8Array(buf), function (b) {
+      return ('0' + b.toString(16)).slice(-2);
+    }).join('');
+  }
+  function derive(code) {
+    var enc = new TextEncoder();
+    return crypto.subtle.importKey('raw', enc.encode(code), 'PBKDF2', false, ['deriveBits'])
+      .then(function (key) {
+        return crypto.subtle.deriveBits(
+          { name: 'PBKDF2', hash: 'SHA-256', salt: hexToBytes(GATE_SALT), iterations: 250000 },
+          key, 256);
+      })
+      .then(bytesToHex);
+  }
+  function unlock() {
+    try { localStorage.setItem('bateria_acesso', '1'); } catch (e) {}
+    body.classList.remove('gate-locked');
+  }
+  function tryUnlock() {
+    var code = input.value.replace(/\s+/g, '').toUpperCase();
+    if (!code) return;
+    derive(code).then(function (h) {
+      if (h === GATE_HASH) { unlock(); }
+      else {
+        err.textContent = 'Código errado';
+        input.value = '';
+        setTimeout(function () { err.textContent = ''; }, 1800);
+      }
+    }).catch(function () { err.textContent = 'Erro a validar'; });
+  }
+  document.getElementById('gateBtn').addEventListener('click', tryUnlock);
+  input.addEventListener('keydown', function (e) { if (e.key === 'Enter') tryUnlock(); });
+
+  var saved = null;
+  try { saved = localStorage.getItem('bateria_acesso'); } catch (e) {}
+  if (saved === '1') { unlock(); }
+  else { setTimeout(function () { input.focus(); }, 300); }
+})();
 </script>
 </body>
 </html>
