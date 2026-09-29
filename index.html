@@ -219,7 +219,7 @@
 </div>
 <div class="card">
   <h1>Cálculo de bateria</h1>
-  <p class="sub"><span id="syncState" class="sync-state" title="Última sincronização entre dispositivos"></span>Necessidade = taxa (%/h) × horas até ao objetivo + gastos extra previstos (com janela de tempo).</p>
+  <p class="sub"><span id="syncState" class="sync-state" title="Última sincronização entre dispositivos"></span>Necessidade = taxa (%/h) × horas até ao objetivo + gastos extra previstos (com janela de tempo). Bateria estimada em tempo real desde a última leitura.</p>
 
   <div class="grid3">
     <div>
@@ -264,6 +264,10 @@ function parseTime(str) {
   return h + (m || 0) / 60;
 }
 function fmt(n, d=1) { return (Math.round(n * Math.pow(10, d)) / Math.pow(10, d)).toFixed(d); }
+function fmtDur(h) {
+  const m = Math.round(h * 60);
+  return Math.floor(m / 60) + 'h ' + String(m % 60).padStart(2, '0') + 'm';
+}
 
 function realNowStr() {
   const d = new Date();
@@ -292,25 +296,27 @@ function addRow(pct, de, ate) {
 
 document.getElementById('addBtn').addEventListener('click', () => addRow());
 
-// overlap da janela [fStart, fEnd] com o horizonte [0, T]; devolve fração da duração L
-function overlapFraction(fStart, fEnd, T, L) {
-  const s = Math.max(fStart, 0);
-  const e = Math.min(fEnd, T);
-  let ov = e - s;
-  if (ov < 0) ov = 0;
-  return L > 0 ? ov / L : 0;
-}
-
 function calc() {
-  const now = parseTime(document.getElementById('now').value);
+  const ref = parseTime(document.getElementById('now').value);   // hora da última leitura
   const bat = parseFloat(document.getElementById('bat').value);
   const obj = parseTime(document.getElementById('obj').value);
   const rate = parseFloat(document.getElementById('rate').value) || 0;
-  const T = (obj - now + 24) % 24;        // horas até ao objetivo
-  const base = T * rate;                   // taxa %/h × horas
 
-  let extra = 0;
+  const realH = parseTime(realNowStr());
+  let elapsed = (realH - ref + 24) % 24;   // horas desde a leitura
+  if (elapsed > 23) elapsed -= 24;
+  if (elapsed < 0) elapsed = 0;
+
+  let T = (obj - realH + 24) % 24;         // horas até ao objetivo, a contar de agora
+  if (T > 23) T -= 24;
+  if (T < 0) T = 0;
+
+  const base = T * rate;                   // taxa %/h × horas que faltam
+
+  let extra = 0;                           // gastos extra ainda por gastar
+  let extraSpent = 0;                      // gastos extra já gastos desde a leitura
   const lines = [];
+  const ovl = (s1, e1, s2, e2) => Math.max(0, Math.min(e1, e2) - Math.max(s1, s2));
 
   rowsEl.querySelectorAll('.row').forEach((r, i) => {
     const P = parseFloat(r.querySelector('.pct').value) || 0;
@@ -337,33 +343,40 @@ function calc() {
       return;
     }
 
-    let fStart, fEnd;
-    let inside;
-    if (wrap) inside = (now >= A) || (now < B);
-    else      inside = (now >= A) && (now < B);
+    const a0 = (A - ref + 24) % 24;         // próxima ocorrência da janela, em horas desde a leitura
+    const hEnd = elapsed + T;               // fim do horizonte, em horas desde a leitura
 
-    if (inside) {
-      fStart = 0;
-      if (wrap && now >= A) fEnd = (24 - now) + B;   // parte da noite + manhã
-      else                   fEnd = B - now;          // só parte da manhã (wrap) ou janela normal
-    } else {
-      const sA = (A - now + 24) % 24;       // próxima ocorrência do início
-      fStart = sA;
-      fEnd = sA + L;
-    }
-
-    const fraction = overlapFraction(fStart, fEnd, T, L);
-    contrib = P * fraction;
+    let spent = 0, left = 0;
+    [a0 - 24, a0, a0 + 24].forEach(ai => {
+      spent += P * ovl(0, elapsed, ai, ai + L) / L;       // parte já gasta desde a leitura
+      left  += P * ovl(elapsed, hEnd, ai, ai + L) / L;    // parte ainda por gastar
+    });
+    if (spent > P) spent = P;
+    if (left > P - spent) left = P - spent;
+    contrib = left;
     extra += contrib;
+    extraSpent += spent;
 
-    if (fraction <= 0.0001)      note = 'fora do horizonte';
-    else if (fraction >= 0.9999) note = 'tudo por gastar';
-    else                         note = `${fmt((1 - fraction) * 100, 0)}% já gasto`;
+    const fDone = spent / P, fLeft = contrib / P;
+    if (fDone >= 0.9999)                         note = 'tudo já gasto';
+    else if (fLeft >= 0.9999)                    note = 'tudo por gastar';
+    else if (fDone <= 0.0001 && fLeft <= 0.0001) note = 'fora do horizonte';
+    else                                         note = `${fmt(fDone * 100, 0)}% já gasto`;
 
     lines.push({i, P, win: `${deStr}→${ateStr}`, contrib, note});
   });
 
   const total = base + extra;
+  const spentTotal = rate * elapsed + extraSpent;   // consumo desde a leitura
+
+  // bateria estimada agora
+  const hasBat = !isNaN(bat);
+  let estBat = null;
+  if (hasBat) {
+    estBat = bat - spentTotal;
+    if (estBat < 0) estBat = 0;
+    if (estBat > 100) estBat = 100;
+  }
 
   // breakdown
   let html = '';
@@ -373,13 +386,20 @@ function calc() {
   lines.forEach(l => {
     html += `<div class="line row-line"><span>linha ${l.i+1}: ${fmt(l.P,1)}% (${l.win}) — ${l.note}</span><span>${fmt(l.contrib,1)}%</span></div>`;
   });
+  if (hasBat) {
+    if (elapsed >= 1 / 60) {
+      html += `<div class="line"><span>Gasto desde a leitura (${fmtDur(elapsed)})</span><span>−${fmt(spentTotal,1)}%</span></div>`;
+    }
+    html += `<div class="line"><span>Bateria estimada agora</span><span>${fmt(estBat,1)}%</span></div>`;
+  }
   breakdownEl.innerHTML = html;
 
   // result + verdict
-  const hasBat = !isNaN(bat);
   if (hasBat) {
-    const diff = bat - total;
+    const diff = estBat - total;
     const ok = diff >= -1e-9;
+    const leitura = document.getElementById('now').value || '—';
+    const sub = elapsed >= 1 / 60 ? `<div class="lbl" style="margin-top:4px;">leitura: ${fmt(bat,1)}% às ${leitura}</div>` : '';
     resultEl.className = 'result ' + (ok ? 'ok' : 'bad');
     resultEl.innerHTML = `
       <div>
@@ -387,9 +407,10 @@ function calc() {
         <div class="big">${fmt(total,1)}%</div>
       </div>
       <div class="right">
-        <div class="lbl">Bateria atual</div>
-        <div class="big">${fmt(bat,1)}%</div>
+        <div class="lbl">Bateria agora (estimada)</div>
+        <div class="big">${fmt(estBat,1)}%</div>
         <div class="verdict">${ok ? '✅ Chega (sobra ' + fmt(diff,1) + '%)' : '⚠️ Em défice (falta ' + fmt(-diff,1) + '%)'}</div>
+        ${sub}
       </div>`;
   } else {
     resultEl.className = 'result neutral';
@@ -399,12 +420,17 @@ function calc() {
         <div class="big">${fmt(total,1)}%</div>
       </div>
       <div class="right">
-        <div class="lbl">Bateria atual</div>
+        <div class="lbl">Bateria agora (estimada)</div>
         <div class="big" style="font-size:20px;color:#9ca3af;">—</div>
         <div class="verdict" style="color:#9ca3af;">indica a bateria atual</div>
       </div>`;
   }
 }
+
+// ao escrever uma leitura nova de bateria, a hora da leitura passa a ser a atual
+document.getElementById('bat').addEventListener('input', () => {
+  document.getElementById('now').value = realNowStr();
+});
 
 ['now','bat','obj','rate'].forEach(id => document.getElementById(id).addEventListener('input', calc));
 
@@ -552,9 +578,10 @@ else document.getElementById('now').value = realNowStr();
 calc();
 syncPull();
 setInterval(syncPull, POLL_EVERY);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) syncPull(); });
-window.addEventListener('focus', syncPull);
-window.addEventListener('pageshow', syncPull);
+setInterval(calc, 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { calc(); syncPull(); } });
+window.addEventListener('focus', () => { calc(); syncPull(); });
+window.addEventListener('pageshow', () => { calc(); syncPull(); });
 </script>
 
 <script>
@@ -622,7 +649,7 @@ window.addEventListener('pageshow', syncPull);
       cfg = (c && c.salt && c.hash) ? c : (cached && cached.salt && cached.hash ? cached : FALLBACK);
       if (!cfg.v) cfg.v = 1;
       if (readUnlock() >= cfg.v) unlock();
-      else { setTimeout(function () { input.focus(); }, 300); }
+      else { body.classList.add('gate-locked'); setTimeout(function () { input.focus(); }, 300); }
     }
     var to = setTimeout(function () { decide(null); }, 1500);
     fetch(CFG_URL + '?t=' + Date.now(), { cache: 'no-store' })
@@ -690,6 +717,13 @@ window.addEventListener('pageshow', syncPull);
       chgErr.textContent = 'Não deu — verifica a ligação e tenta outra vez';
     });
   });
+
+  // abertura imediata quando o registo local já autoriza (reavaliado assim que o servidor responder)
+  try {
+    var cc = JSON.parse(localStorage.getItem('bateria_gate_cfg'));
+    var vv = (cc && cc.v) ? cc.v : 1;
+    if (readUnlock() >= vv) unlock();
+  } catch (e) {}
 
   loadCfg();
 })();
