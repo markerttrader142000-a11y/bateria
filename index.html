@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cálculo de Bateria</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #eef1f4;
+    color: #1f2937;
+    margin: 0;
+    padding: 32px 16px;
+  }
+  .card {
+    max-width: 580px;
+    margin: 0 auto;
+    background: #ffffff;
+    border-radius: 14px;
+    padding: 24px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+  }
+  h1 {
+    font-size: 18px;
+    margin: 0 0 4px;
+    font-weight: 600;
+  }
+  .sub {
+    font-size: 12px;
+    color: #6b7280;
+    margin: 0 0 18px;
+  }
+  .sync-state {
+    float: right;
+    font-size: 11px;
+    color: #9ca3af;
+    margin-left: 12px;
+  }
+  .sync-state.warn { color: #b45309; }
+  .grid3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+  label {
+    font-size: 11px;
+    color: #6b7280;
+    display: block;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  @media (max-width: 480px) {
+    body { padding: 16px 8px; }
+    .card { padding: 16px; border-radius: 12px; }
+    .grid3 { gap: 8px; }
+    label { font-size: 10px; }
+    input[type="time"], input[type="number"] { padding: 7px 8px; font-size: 14px; }
+    .narrow { width: 60px; }
+    .row { grid-template-columns: 46px 1fr 1fr 28px; }
+    .del { width: 28px; height: 28px; }
+  }
+  input[type="time"], input[type="number"] {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 14px;
+    background: #fff;
+    color: #1f2937;
+  }
+  input[type="number"]#bat, input[type="number"]#rate {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .narrow { width: 72px; }
+  input:focus { outline: none; border-color: #6366f1; }
+  .now-wrap { position: relative; }
+  .now-wrap button {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    border: none;
+    background: #eef1f4;
+    color: #4b5563;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0;
+    line-height: 1;
+  }
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 18px 0 10px;
+    color: #374151;
+  }
+  .row {
+    display: grid;
+    grid-template-columns: 52px 1fr 1fr 30px;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .row input.pct { text-align: center; font-variant-numeric: tabular-nums; padding: 7px 6px; }
+  .row input { padding: 7px 8px; font-size: 13px; }
+  .del {
+    width: 30px;
+    height: 30px;
+    border: none;
+    background: #fee2e2;
+    color: #b91c1c;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+  }
+  .add {
+    background: #f3f4f6;
+    border: 1px dashed #cbd5e1;
+    color: #4b5563;
+    padding: 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    width: 100%;
+    font-size: 13px;
+    margin-top: 4px;
+  }
+  .add:hover { background: #e5e7eb; }
+
+  .breakdown {
+    background: #f9fafb;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-top: 18px;
+    font-size: 13px;
+  }
+  .breakdown .line {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    color: #4b5563;
+  }
+  .breakdown .line span:last-child { font-variant-numeric: tabular-nums; }
+  .breakdown .line.row-line { color: #9ca3af; font-size: 12px; padding-left: 10px; }
+
+  .result {
+    margin-top: 16px;
+    padding: 16px;
+    border-radius: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .result .big { font-size: 28px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .result .lbl { font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; }
+  .result.ok { background: #ecfdf5; }
+  .result.ok .big { color: #059669; }
+  .result.bad { background: #fef2f2; }
+  .result.bad .big { color: #dc2626; }
+  .result.neutral { background: #f3f4f6; }
+  .result.neutral .big { color: #4b5563; }
+  .verdict { font-size: 14px; font-weight: 600; }
+  .result.ok .verdict { color: #059669; }
+  .result.bad .verdict { color: #dc2626; }
+  .right { text-align: right; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Cálculo de bateria</h1>
+  <p class="sub"><span id="syncState" class="sync-state" title="Última sincronização entre dispositivos"></span>Necessidade = taxa (%/h) × horas até ao objetivo + gastos extra previstos (com janela de tempo).</p>
+
+  <div class="grid3">
+    <div>
+      <label>Agora</label>
+      <div class="now-wrap">
+        <input type="time" id="now">
+        <button id="nowBtn" title="Usar hora atual">↻</button>
+      </div>
+    </div>
+    <div>
+      <label>Bateria %</label>
+      <input type="number" id="bat" min="0" max="100" placeholder="0" class="narrow">
+    </div>
+    <div>
+      <label>Taxa %/h</label>
+      <input type="number" id="rate" min="0" step="0.1" value="1" class="narrow">
+    </div>
+    <div>
+      <label>Objetivo</label>
+      <input type="time" id="obj" value="08:00">
+    </div>
+  </div>
+
+  <div class="section-title">Gastos extra previstos</div>
+  <div id="rows"></div>
+  <button class="add" id="addBtn">+ Adicionar linha de gasto</button>
+
+  <div class="breakdown" id="breakdown"></div>
+  <div class="result neutral" id="result"></div>
+</div>
+
+<script>
+const rowsEl = document.getElementById('rows');
+const breakdownEl = document.getElementById('breakdown');
+const resultEl = document.getElementById('result');
+const syncEl = document.getElementById('syncState');
+
+function parseTime(str) {
+  if (!str) return 0;
+  const [h, m] = str.split(':').map(Number);
+  return h + (m || 0) / 60;
+}
+function fmt(n, d=1) { return (Math.round(n * Math.pow(10, d)) / Math.pow(10, d)).toFixed(d); }
+
+function realNowStr() {
+  const d = new Date();
+  return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+}
+
+document.getElementById('nowBtn').addEventListener('click', () => {
+  document.getElementById('now').value = realNowStr();
+  calc();
+  saveState();
+});
+
+function addRow(pct, de, ate) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.innerHTML = `
+    <input type="number" class="pct" min="0" max="100" placeholder="%" value="${pct ?? ''}">
+    <input type="time" class="de" value="${de ?? ''}">
+    <input type="time" class="ate" value="${ate ?? ''}">
+    <button class="del" title="Remover">×</button>`;
+  row.querySelector('.del').addEventListener('click', () => { row.remove(); calc(); saveState(); });
+  row.querySelectorAll('input').forEach(i => i.addEventListener('input', calc));
+  rowsEl.appendChild(row);
+  calc();
+}
+
+document.getElementById('addBtn').addEventListener('click', () => addRow());
+
+// overlap da janela [fStart, fEnd] com o horizonte [0, T]; devolve fração da duração L
+function overlapFraction(fStart, fEnd, T, L) {
+  const s = Math.max(fStart, 0);
+  const e = Math.min(fEnd, T);
+  let ov = e - s;
+  if (ov < 0) ov = 0;
+  return L > 0 ? ov / L : 0;
+}
+
+function calc() {
+  const now = parseTime(document.getElementById('now').value);
+  const bat = parseFloat(document.getElementById('bat').value);
+  const obj = parseTime(document.getElementById('obj').value);
+  const rate = parseFloat(document.getElementById('rate').value) || 0;
+  const T = (obj - now + 24) % 24;        // horas até ao objetivo
+  const base = T * rate;                   // taxa %/h × horas
+
+  let extra = 0;
+  const lines = [];
+
+  rowsEl.querySelectorAll('.row').forEach((r, i) => {
+    const P = parseFloat(r.querySelector('.pct').value) || 0;
+    const A = parseTime(r.querySelector('.de').value);
+    const B = parseTime(r.querySelector('.ate').value);
+    const deStr = r.querySelector('.de').value || '—';
+    const ateStr = r.querySelector('.ate').value || '—';
+    let contrib = 0, note = '';
+
+    if (P <= 0) {
+      lines.push({i, P, win: `${deStr}→${ateStr}`, contrib: 0, note: 'sem valor'});
+      return;
+    }
+
+    const wrap = B <= A;                    // janela atravessa a meia-noite
+    const L = wrap ? (24 - A + B) : (B - A);
+
+    if (L <= 0) {
+      // mesma hora / sem janela: gasto fixo (lump)
+      contrib = P;
+      note = 'sem janela → soma fixa';
+      extra += contrib;
+      lines.push({i, P, win: `${deStr}→${ateStr}`, contrib, note});
+      return;
+    }
+
+    let fStart, fEnd;
+    let inside;
+    if (wrap) inside = (now >= A) || (now < B);
+    else      inside = (now >= A) && (now < B);
+
+    if (inside) {
+      fStart = 0;
+      if (wrap && now >= A) fEnd = (24 - now) + B;   // parte da noite + manhã
+      else                   fEnd = B - now;          // só parte da manhã (wrap) ou janela normal
+    } else {
+      const sA = (A - now + 24) % 24;       // próxima ocorrência do início
+      fStart = sA;
+      fEnd = sA + L;
+    }
+
+    const fraction = overlapFraction(fStart, fEnd, T, L);
+    contrib = P * fraction;
+    extra += contrib;
+
+    if (fraction <= 0.0001)      note = 'fora do horizonte';
+    else if (fraction >= 0.9999) note = 'tudo por gastar';
+    else                         note = `${fmt((1 - fraction) * 100, 0)}% já gasto`;
+
+    lines.push({i, P, win: `${deStr}→${ateStr}`, contrib, note});
+  });
+
+  const total = base + extra;
+
+  // breakdown
+  let html = '';
+  html += `<div class="line"><span>Horas até ao objetivo</span><span>${fmt(T,2)} h</span></div>`;
+  html += `<div class="line"><span>Necessidade base (${fmt(rate,1)}%/h)</span><span>${fmt(base,1)}%</span></div>`;
+  html += `<div class="line"><span>Gasto extra por gastar</span><span>${fmt(extra,1)}%</span></div>`;
+  lines.forEach(l => {
+    html += `<div class="line row-line"><span>linha ${l.i+1}: ${fmt(l.P,1)}% (${l.win}) — ${l.note}</span><span>${fmt(l.contrib,1)}%</span></div>`;
+  });
+  breakdownEl.innerHTML = html;
+
+  // result + verdict
+  const hasBat = !isNaN(bat);
+  if (hasBat) {
+    const diff = bat - total;
+    const ok = diff >= -1e-9;
+    resultEl.className = 'result ' + (ok ? 'ok' : 'bad');
+    resultEl.innerHTML = `
+      <div>
+        <div class="lbl">Necessidade total</div>
+        <div class="big">${fmt(total,1)}%</div>
+      </div>
+      <div class="right">
+        <div class="lbl">Bateria atual</div>
+        <div class="big">${fmt(bat,1)}%</div>
+        <div class="verdict">${ok ? '✅ Chega (sobra ' + fmt(diff,1) + '%)' : '⚠️ Em défice (falta ' + fmt(-diff,1) + '%)'}</div>
+      </div>`;
+  } else {
+    resultEl.className = 'result neutral';
+    resultEl.innerHTML = `
+      <div>
+        <div class="lbl">Necessidade total</div>
+        <div class="big">${fmt(total,1)}%</div>
+      </div>
+      <div class="right">
+        <div class="lbl">Bateria atual</div>
+        <div class="big" style="font-size:20px;color:#9ca3af;">—</div>
+        <div class="verdict" style="color:#9ca3af;">indica a bateria atual</div>
+      </div>`;
+  }
+}
+
+['now','bat','obj','rate'].forEach(id => document.getElementById(id).addEventListener('input', calc));
+
+// --- estado: guardado localmente e sincronizado entre dispositivos ---
+// O estado é gravado no próprio dispositivo (localStorage) e publicado num
+// pequeno serviço de armazenamento gratuito, para que o mesmo link mostre o
+// último valor colocado em qualquer dispositivo.
+const STORE = 'bateria_state';
+const SYNC_URL = 'https://textdb.dev/api/data/bateria-a7e2c94f81d603b5';
+const PUSH_DELAY = 700;    // ms de espera antes de publicar (evita envios a cada tecla)
+const POLL_EVERY = 8000;   // ms entre verificações de novidades
+
+let pending = null;        // estado à espera de publicação
+let pushTimer = null;
+let retryLeft = 2;
+let syncing = false;
+
+function readState() {
+  const rows = [];
+  rowsEl.querySelectorAll('.row').forEach(r => {
+    rows.push({
+      pct: r.querySelector('.pct').value,
+      de:  r.querySelector('.de').value,
+      ate: r.querySelector('.ate').value
+    });
+  });
+  return {
+    updatedAt: Date.now(),
+    now:  document.getElementById('now').value,
+    bat:  document.getElementById('bat').value,
+    obj:  document.getElementById('obj').value,
+    rate: document.getElementById('rate').value,
+    rows
+  };
+}
+
+function writeLocal(state) {
+  try { localStorage.setItem(STORE, JSON.stringify(state)); } catch {}
+}
+
+function loadLocal() {
+  try {
+    const raw = localStorage.getItem(STORE);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function applyState(s) {
+  if (!s || typeof s !== 'object') return;
+  if (s.now)  document.getElementById('now').value  = s.now;
+  if (s.bat !== undefined) document.getElementById('bat').value = s.bat;
+  if (s.obj)  document.getElementById('obj').value  = s.obj;
+  if (s.rate) document.getElementById('rate').value = s.rate;
+  rowsEl.innerHTML = '';
+  if (Array.isArray(s.rows)) s.rows.forEach(r => addRow(r.pct || '', r.de || '', r.ate || ''));
+  calc();
+}
+
+function setSyncStatus(ok) {
+  if (!ok) {
+    syncEl.textContent = 'Só neste dispositivo';
+    syncEl.className = 'sync-state warn';
+    return;
+  }
+  syncEl.textContent = 'Sincronizado ' + realNowStr();
+  syncEl.className = 'sync-state';
+}
+
+async function pushState(state) {
+  try {
+    const res = await fetch(SYNC_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(state)
+    });
+    setSyncStatus(res.ok);
+    return res.ok;
+  } catch { setSyncStatus(false); return false; }
+}
+
+async function flushPush() {
+  pushTimer = null;
+  if (!pending) return;
+  const state = pending;
+  pending = null;
+  const ok = await pushState(state);
+  if (ok) { retryLeft = 2; return; }
+  if (retryLeft > 0 && !pending) { retryLeft--; pending = state; pushTimer = setTimeout(flushPush, 2500); }
+}
+
+function saveState() {
+  const state = readState();
+  writeLocal(state);
+  pending = state;
+  retryLeft = 2;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(flushPush, PUSH_DELAY);
+}
+
+async function syncPull() {
+  if (syncing || document.hidden) return;
+  syncing = true;
+  try {
+    const res = await fetch(SYNC_URL + '?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) { setSyncStatus(false); return; }
+    let txt = (await res.text()).trim();
+    if (txt) {
+      if (txt.startsWith('value=')) txt = txt.slice(6);
+      let remote = null;
+      try { remote = JSON.parse(txt); } catch {
+        try { remote = JSON.parse(decodeURIComponent(txt)); } catch { remote = null; }
+      }
+      if (remote && typeof remote === 'object') {
+        const tR = Number(remote.updatedAt) || 0;
+        const local = loadLocal();
+        const tL = Number(local && local.updatedAt) || 0;
+        if (tR > tL) { writeLocal(remote); applyState(remote); }
+        else if (tL > tR) { const s = readState(); writeLocal(s); pushState(s); }
+      }
+    }
+    setSyncStatus(true);
+  } catch { setSyncStatus(false); }
+  finally { syncing = false; }
+}
+
+// guardar sempre que algo muda
+rowsEl.addEventListener('input', saveState);
+['now','bat','obj','rate'].forEach(id => document.getElementById(id).addEventListener('input', saveState));
+document.getElementById('addBtn').addEventListener('click', saveState);
+
+// publicar o que ficou pendente se a página fechar antes do envio
+window.addEventListener('pagehide', () => {
+  if (!pending) return;
+  const s = pending;
+  pending = null;
+  try {
+    navigator.sendBeacon(SYNC_URL, new Blob([JSON.stringify(s)], { type: 'text/plain' }));
+  } catch {}
+});
+
+// arranque: restaurar o que houver e procurar novidades
+const saved = loadLocal();
+if (saved) applyState(saved);
+else document.getElementById('now').value = realNowStr();
+calc();
+syncPull();
+setInterval(syncPull, POLL_EVERY);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) syncPull(); });
+window.addEventListener('focus', syncPull);
+window.addEventListener('pageshow', syncPull);
+</script>
+</body>
+</html>
