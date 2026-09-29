@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="app-version" content="v4">
+<meta name="app-version" content="v5">
 <title>Cálculo de Bateria</title>
 <style>
   * { box-sizing: border-box; }
@@ -225,8 +225,9 @@
     <div>
       <label>Agora</label>
       <div class="now-wrap">
-        <input type="time" id="now">
+        <input type="time" id="now" readonly tabindex="-1">
       </div>
+      <input type="hidden" id="ref">
     </div>
     <div>
       <label>Bateria %</label>
@@ -273,6 +274,13 @@ function realNowStr() {
   return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
 }
 
+// relógio ao vivo: o campo "Agora" mostra sempre a hora atual
+function tickClock() {
+  const el = document.getElementById('now');
+  const t = realNowStr();
+  if (el.value !== t) el.value = t;
+}
+
 function addRow(pct, de, ate, nome) {
   const row = document.createElement('div');
   row.className = 'row';
@@ -291,7 +299,7 @@ function addRow(pct, de, ate, nome) {
 document.getElementById('addBtn').addEventListener('click', () => addRow());
 
 function calc() {
-  const ref = parseTime(document.getElementById('now').value);   // hora da última leitura
+  const ref = parseTime(document.getElementById('ref').value || document.getElementById('now').value);   // hora da última leitura
   const bat = parseFloat(document.getElementById('bat').value);
   const obj = parseTime(document.getElementById('obj').value);
   const rate = parseFloat(document.getElementById('rate').value) || 0;
@@ -383,7 +391,8 @@ function calc() {
   });
   if (hasBat) {
     if (elapsed >= 1 / 60) {
-      html += `<div class="line"><span>Gasto desde a leitura (${fmtDur(elapsed)})</span><span>−${fmt(spentTotal,1)}%</span></div>`;
+      const refStr = document.getElementById('ref').value || '—';
+      html += `<div class="line"><span>Gasto desde a leitura às ${refStr} (há ${fmtDur(elapsed)})</span><span>−${fmt(spentTotal,1)}%</span></div>`;
     }
     html += `<div class="line"><span>Bateria estimada agora</span><span>${fmt(estBat,1)}%</span></div>`;
   }
@@ -393,7 +402,7 @@ function calc() {
   if (hasBat) {
     const diff = estBat - total;
     const ok = diff >= -1e-9;
-    const leitura = document.getElementById('now').value || '—';
+    const leitura = document.getElementById('ref').value || '—';
     const sub = elapsed >= 1 / 60 ? `<div class="lbl" style="margin-top:4px;">leitura: ${fmt(bat,1)}% às ${leitura}</div>` : '';
     resultEl.className = 'result ' + (ok ? 'ok' : 'bad');
     resultEl.innerHTML = `
@@ -422,9 +431,10 @@ function calc() {
   }
 }
 
-// ao escrever uma leitura nova de bateria, a hora da leitura passa a ser a atual
+// ao escrever uma leitura nova de bateria, a hora da leitura (referência) passa a ser a atual
 document.getElementById('bat').addEventListener('input', () => {
-  document.getElementById('now').value = realNowStr();
+  document.getElementById('ref').value = realNowStr();
+  tickClock();
 });
 
 ['now','bat','obj','rate'].forEach(id => document.getElementById(id).addEventListener('input', calc));
@@ -456,6 +466,7 @@ function readState() {
   return {
     updatedAt: Date.now(),
     now:  document.getElementById('now').value,
+    ref:  document.getElementById('ref').value,
     bat:  document.getElementById('bat').value,
     obj:  document.getElementById('obj').value,
     rate: document.getElementById('rate').value,
@@ -476,7 +487,8 @@ function loadLocal() {
 
 function applyState(s) {
   if (!s || typeof s !== 'object') return;
-  if (s.now)  document.getElementById('now').value  = s.now;
+  if (s.ref) document.getElementById('ref').value = s.ref;
+  else if (s.now) document.getElementById('ref').value = s.now;
   if (s.bat !== undefined) document.getElementById('bat').value = s.bat;
   if (s.obj)  document.getElementById('obj').value  = s.obj;
   if (s.rate) document.getElementById('rate').value = s.rate;
@@ -570,14 +582,16 @@ window.addEventListener('pagehide', () => {
 // arranque: restaurar o que houver e procurar novidades
 const saved = loadLocal();
 if (saved) applyState(saved);
-else document.getElementById('now').value = realNowStr();
+if (!document.getElementById('ref').value) document.getElementById('ref').value = realNowStr();
+tickClock();
 calc();
 syncPull();
 setInterval(syncPull, POLL_EVERY);
 setInterval(calc, 30000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { calc(); syncPull(); } });
-window.addEventListener('focus', () => { calc(); syncPull(); });
-window.addEventListener('pageshow', () => { calc(); syncPull(); });
+setInterval(tickClock, 5000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { tickClock(); calc(); syncPull(); } });
+window.addEventListener('focus', () => { tickClock(); calc(); syncPull(); });
+window.addEventListener('pageshow', () => { tickClock(); calc(); syncPull(); });
 </script>
 
 <script>
