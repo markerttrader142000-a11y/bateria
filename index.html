@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<meta name="app-version" content="v4">
 <title>Cálculo de Bateria</title>
 <style>
   * { box-sizing: border-box; }
@@ -58,16 +62,20 @@
   @media (max-width: 480px) {
     body { padding: 16px 8px; }
     .card { padding: 16px; border-radius: 12px; }
-    .grid3 { grid-template-columns: 1.15fr 0.75fr 0.7fr 1.15fr; gap: 6px; }
+    .grid3 { grid-template-columns: 0.95fr 0.8fr 0.75fr 1.1fr; gap: 6px; }
     label { font-size: 9.5px; letter-spacing: 0; }
     input[type="time"], input[type="number"] { padding: 7px 6px; font-size: 13.5px; }
-    .now-wrap input[type="time"] { padding-right: 26px; }
-    .now-wrap button { right: 4px; width: 20px; height: 20px; font-size: 11px; }
     .narrow { width: 100%; }
     .row { grid-template-columns: 40px 1fr 1fr 46px 26px; gap: 6px; }
     .row input { padding: 6px 6px; font-size: 12.5px; }
     .row input.nome { padding: 6px 3px; font-size: 12px; }
     .del { width: 26px; height: 26px; font-size: 14px; }
+  }
+  /* iOS (Safari/WebKit): texto >= 16px evita o zoom automático ao focar um campo */
+  @supports (-webkit-touch-callout: none) {
+    @media (max-width: 480px) {
+      input[type="time"], input[type="number"] { font-size: 16px; }
+    }
   }
   input[type="time"], input[type="number"] {
     width: 100%;
@@ -85,22 +93,6 @@
   .narrow { width: 72px; }
   input:focus { outline: none; border-color: #6366f1; }
   .now-wrap { position: relative; }
-  .now-wrap button {
-    position: absolute;
-    right: 6px;
-    top: 50%;
-    transform: translateY(-50%);
-    border: none;
-    background: #eef1f4;
-    color: #4b5563;
-    width: 22px;
-    height: 22px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 12px;
-    padding: 0;
-    line-height: 1;
-  }
   .section-title {
     font-size: 13px;
     font-weight: 600;
@@ -231,7 +223,6 @@
       <label>Agora</label>
       <div class="now-wrap">
         <input type="time" id="now">
-        <button id="nowBtn" title="Usar hora atual">↻</button>
       </div>
     </div>
     <div>
@@ -278,12 +269,6 @@ function realNowStr() {
   const d = new Date();
   return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
 }
-
-document.getElementById('nowBtn').addEventListener('click', () => {
-  document.getElementById('now').value = realNowStr();
-  calc();
-  saveState();
-});
 
 function addRow(pct, de, ate, nome) {
   const row = document.createElement('div');
