@@ -44,10 +44,11 @@
   .sync-state.warn { color: #b45309; }
   .grid3 {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr 1fr;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 12px;
     margin-bottom: 18px;
   }
+  .grid3 > div { min-width: 0; }
   label {
     font-size: 11px;
     color: #6b7280;
@@ -62,11 +63,11 @@
   @media (max-width: 480px) {
     body { padding: 16px 8px; }
     .card { padding: 16px; border-radius: 12px; }
-    .grid3 { grid-template-columns: 0.95fr 0.8fr 0.75fr 1.1fr; gap: 6px; }
+    .grid3 { grid-template-columns: minmax(0, 0.95fr) minmax(0, 0.62fr) minmax(0, 0.58fr) minmax(0, 0.95fr); gap: 6px; }
     label { font-size: 9.5px; letter-spacing: 0; }
     input[type="time"], input[type="number"] { padding: 7px 6px; font-size: 13.5px; }
     .narrow { width: 100%; }
-    .row { grid-template-columns: 40px 1fr 1fr 46px 26px; gap: 6px; }
+    .row { grid-template-columns: 40px minmax(0, 1fr) minmax(0, 1fr) 46px 26px; gap: 6px; }
     .row input { padding: 6px 6px; font-size: 12.5px; }
     .row input.nome { padding: 6px 3px; font-size: 12px; }
     .del { width: 26px; height: 26px; font-size: 14px; }
@@ -79,6 +80,7 @@
   }
   input[type="time"], input[type="number"] {
     width: 100%;
+    min-width: 0;
     padding: 8px 10px;
     border: 1px solid #d1d5db;
     border-radius: 8px;
@@ -101,11 +103,12 @@
   }
   .row {
     display: grid;
-    grid-template-columns: 52px 1fr 1fr 54px 30px;
+    grid-template-columns: 52px minmax(0, 1fr) minmax(0, 1fr) 54px 30px;
     gap: 8px;
     align-items: center;
     margin-bottom: 8px;
   }
+  input[type="time"], input[type="number"], input[type="text"], .row input { min-width: 0; }
   .row input.pct { text-align: center; font-variant-numeric: tabular-nums; padding: 7px 6px; }
   .row input.nome { padding: 7px 4px; text-align: center; text-transform: uppercase; letter-spacing: 0.04em; }
   .row input { padding: 7px 8px; font-size: 13px; }
