@@ -58,12 +58,15 @@
   @media (max-width: 480px) {
     body { padding: 16px 8px; }
     .card { padding: 16px; border-radius: 12px; }
-    .grid3 { gap: 8px; }
+    .grid3 { grid-template-columns: 1fr 1fr; gap: 10px; }
     label { font-size: 10px; }
     input[type="time"], input[type="number"] { padding: 7px 8px; font-size: 14px; }
-    .narrow { width: 60px; }
-    .row { grid-template-columns: 46px 1fr 1fr 28px; }
-    .del { width: 28px; height: 28px; }
+    .now-wrap input[type="time"] { padding-right: 30px; }
+    .narrow { width: 100%; }
+    .row { grid-template-columns: 40px 1fr 1fr 46px 26px; gap: 6px; }
+    .row input { padding: 6px 6px; font-size: 12.5px; }
+    .row input.nome { padding: 6px 3px; font-size: 12px; }
+    .del { width: 26px; height: 26px; font-size: 14px; }
   }
   input[type="time"], input[type="number"] {
     width: 100%;
@@ -105,12 +108,13 @@
   }
   .row {
     display: grid;
-    grid-template-columns: 52px 1fr 1fr 30px;
+    grid-template-columns: 52px 1fr 1fr 54px 30px;
     gap: 8px;
     align-items: center;
     margin-bottom: 8px;
   }
   .row input.pct { text-align: center; font-variant-numeric: tabular-nums; padding: 7px 6px; }
+  .row input.nome { padding: 7px 4px; text-align: center; text-transform: uppercase; letter-spacing: 0.04em; }
   .row input { padding: 7px 8px; font-size: 13px; }
   .del {
     width: 30px;
@@ -280,13 +284,14 @@ document.getElementById('nowBtn').addEventListener('click', () => {
   saveState();
 });
 
-function addRow(pct, de, ate) {
+function addRow(pct, de, ate, nome) {
   const row = document.createElement('div');
   row.className = 'row';
   row.innerHTML = `
     <input type="number" class="pct" min="0" max="100" placeholder="%" value="${pct ?? ''}">
     <input type="time" class="de" value="${de ?? ''}">
     <input type="time" class="ate" value="${ate ?? ''}">
+    <input type="text" class="nome" maxlength="4" placeholder="nome" autocapitalize="characters" spellcheck="false" value="${nome ?? ''}">
     <button class="del" title="Remover">×</button>`;
   row.querySelector('.del').addEventListener('click', () => { row.remove(); calc(); saveState(); });
   row.querySelectorAll('input').forEach(i => i.addEventListener('input', calc));
@@ -324,10 +329,11 @@ function calc() {
     const B = parseTime(r.querySelector('.ate').value);
     const deStr = r.querySelector('.de').value || '—';
     const ateStr = r.querySelector('.ate').value || '—';
+    const nome = (r.querySelector('.nome').value || '').trim();
     let contrib = 0, note = '';
 
     if (P <= 0) {
-      lines.push({i, P, win: `${deStr}→${ateStr}`, contrib: 0, note: 'sem valor'});
+      lines.push({i, nome, P, win: `${deStr}→${ateStr}`, contrib: 0, note: 'sem valor'});
       return;
     }
 
@@ -339,7 +345,7 @@ function calc() {
       contrib = P;
       note = 'sem janela → soma fixa';
       extra += contrib;
-      lines.push({i, P, win: `${deStr}→${ateStr}`, contrib, note});
+      lines.push({i, nome, P, win: `${deStr}→${ateStr}`, contrib, note});
       return;
     }
 
@@ -363,7 +369,7 @@ function calc() {
     else if (fDone <= 0.0001 && fLeft <= 0.0001) note = 'fora do horizonte';
     else                                         note = `${fmt(fDone * 100, 0)}% já gasto`;
 
-    lines.push({i, P, win: `${deStr}→${ateStr}`, contrib, note});
+    lines.push({i, nome, P, win: `${deStr}→${ateStr}`, contrib, note});
   });
 
   const total = base + extra;
@@ -384,7 +390,7 @@ function calc() {
   html += `<div class="line"><span>Necessidade base (${fmt(rate,1)}%/h)</span><span>${fmt(base,1)}%</span></div>`;
   html += `<div class="line"><span>Gasto extra por gastar</span><span>${fmt(extra,1)}%</span></div>`;
   lines.forEach(l => {
-    html += `<div class="line row-line"><span>linha ${l.i+1}: ${fmt(l.P,1)}% (${l.win}) — ${l.note}</span><span>${fmt(l.contrib,1)}%</span></div>`;
+    html += `<div class="line row-line"><span>linha ${l.i+1}${l.nome ? ' (' + l.nome + ')' : ''}: ${fmt(l.P,1)}% (${l.win}) — ${l.note}</span><span>${fmt(l.contrib,1)}%</span></div>`;
   });
   if (hasBat) {
     if (elapsed >= 1 / 60) {
@@ -454,7 +460,8 @@ function readState() {
     rows.push({
       pct: r.querySelector('.pct').value,
       de:  r.querySelector('.de').value,
-      ate: r.querySelector('.ate').value
+      ate: r.querySelector('.ate').value,
+      nome: r.querySelector('.nome').value
     });
   });
   return {
@@ -485,7 +492,7 @@ function applyState(s) {
   if (s.obj)  document.getElementById('obj').value  = s.obj;
   if (s.rate) document.getElementById('rate').value = s.rate;
   rowsEl.innerHTML = '';
-  if (Array.isArray(s.rows)) s.rows.forEach(r => addRow(r.pct || '', r.de || '', r.ate || ''));
+  if (Array.isArray(s.rows)) s.rows.forEach(r => addRow(r.pct || '', r.de || '', r.ate || '', r.nome || ''));
   calc();
 }
 
