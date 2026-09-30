@@ -157,7 +157,7 @@
   .breakdown .line.row-line { color: #9ca3af; font-size: 12px; padding-left: 10px; }
 
   .result {
-    margin-top: 16px;
+    margin: 0 0 18px;
     padding: 16px;
     border-radius: 12px;
     display: flex;
@@ -225,6 +225,8 @@
   <h1>Cálculo de bateria</h1>
   <p class="sub"><span id="syncState" class="sync-state" title="Última sincronização entre dispositivos"></span>Necessidade = taxa (%/h) × horas até ao objetivo + gastos extra previstos (com janela de tempo). Bateria estimada em tempo real desde a última leitura.</p>
 
+  <div class="result neutral" id="result"></div>
+
   <div class="grid3">
     <div>
       <label>Agora</label>
@@ -253,7 +255,6 @@
   <button class="add" id="addBtn">+ Adicionar linha de gasto</button>
 
   <div class="breakdown" id="breakdown"></div>
-  <div class="result neutral" id="result"></div>
   <p class="chg-link"><a href="#" id="chgOpen">Mudar código de acesso</a></p>
 </div>
 
