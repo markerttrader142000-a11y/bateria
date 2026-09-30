@@ -70,7 +70,7 @@
     .row { grid-template-columns: 40px minmax(0, 1fr) minmax(0, 1fr) 46px 26px; gap: 6px; }
     .row input { padding: 6px 6px; font-size: 12.5px; }
     .row input.nome { padding: 6px 3px; font-size: 12px; }
-    .del { width: 26px; height: 26px; font-size: 14px; }
+    .tog { width: 26px; height: 26px; font-size: 13px; }
   }
   /* iOS (Safari/WebKit): texto >= 16px evita o zoom automático ao focar um campo */
   @supports (-webkit-touch-callout: none) {
@@ -112,17 +112,21 @@
   .row input.pct { text-align: center; font-variant-numeric: tabular-nums; padding: 7px 6px; }
   .row input.nome { padding: 7px 4px; text-align: center; text-transform: uppercase; letter-spacing: 0.04em; }
   .row input { padding: 7px 8px; font-size: 13px; }
-  .del {
+  .tog {
     width: 30px;
     height: 30px;
     border: none;
-    background: #fee2e2;
-    color: #b91c1c;
+    background: #dcfce7;
+    color: #15803d;
     border-radius: 8px;
     cursor: pointer;
-    font-size: 16px;
+    font-size: 15px;
     line-height: 1;
+    padding: 0;
   }
+  .tog.off { background: #f3f4f6; color: #9ca3af; }
+  .row.off { opacity: 0.45; }
+  .hint { font-size: 11px; color: #9ca3af; margin: 0 0 10px; }
   .add {
     background: #f3f4f6;
     border: 1px dashed #cbd5e1;
@@ -244,6 +248,7 @@
   </div>
 
   <div class="section-title">Gastos extra previstos</div>
+  <p class="hint">✓ = conta · ✕ = fora da conta (toca para alternar — as linhas não se apagam)</p>
   <div id="rows"></div>
   <button class="add" id="addBtn">+ Adicionar linha de gasto</button>
 
@@ -281,16 +286,23 @@ function tickClock() {
   if (el.value !== t) el.value = t;
 }
 
-function addRow(pct, de, ate, nome) {
+function addRow(pct, de, ate, nome, on) {
   const row = document.createElement('div');
-  row.className = 'row';
+  const isOff = (on === false);
+  row.className = 'row' + (isOff ? ' off' : '');
   row.innerHTML = `
     <input type="number" class="pct" min="0" max="100" placeholder="%" value="${pct ?? ''}">
     <input type="time" class="de" value="${de ?? ''}">
     <input type="time" class="ate" value="${ate ?? ''}">
     <input type="text" class="nome" maxlength="4" placeholder="nome" autocapitalize="characters" spellcheck="false" value="${nome ?? ''}">
-    <button class="del" title="Remover">×</button>`;
-  row.querySelector('.del').addEventListener('click', () => { row.remove(); calc(); saveState(); });
+    <button class="tog${isOff ? ' off' : ''}" title="Tirar da conta / voltar a contar">${isOff ? '✕' : '✓'}</button>`;
+  const tog = row.querySelector('.tog');
+  tog.addEventListener('click', () => {
+    const off = row.classList.toggle('off');
+    tog.classList.toggle('off', off);
+    tog.textContent = off ? '✕' : '✓';
+    calc(); saveState();
+  });
   row.querySelectorAll('input').forEach(i => i.addEventListener('input', calc));
   rowsEl.appendChild(row);
   calc();
@@ -321,6 +333,7 @@ function calc() {
   const ovl = (s1, e1, s2, e2) => Math.max(0, Math.min(e1, e2) - Math.max(s1, s2));
 
   rowsEl.querySelectorAll('.row').forEach((r, i) => {
+    if (r.classList.contains('off')) return;   // linha fora da conta
     const P = parseFloat(r.querySelector('.pct').value) || 0;
     const A = parseTime(r.querySelector('.de').value);
     const B = parseTime(r.querySelector('.ate').value);
@@ -329,10 +342,7 @@ function calc() {
     const nome = (r.querySelector('.nome').value || '').trim();
     let contrib = 0, note = '';
 
-    if (P <= 0) {
-      lines.push({i, nome, P, win: `${deStr}→${ateStr}`, contrib: 0, note: 'sem valor'});
-      return;
-    }
+    if (P <= 0) return;   // linha sem valor não aparece no resumo
 
     const wrap = B <= A;                    // janela atravessa a meia-noite
     const L = wrap ? (24 - A + B) : (B - A);
@@ -340,7 +350,7 @@ function calc() {
     if (L <= 0) {
       // mesma hora / sem janela: gasto fixo (lump)
       contrib = P;
-      note = 'sem janela → soma fixa';
+      note = 'fixo';
       extra += contrib;
       lines.push({i, nome, P, win: `${deStr}→${ateStr}`, contrib, note});
       return;
@@ -361,8 +371,8 @@ function calc() {
     extraSpent += spent;
 
     const fDone = spent / P, fLeft = contrib / P;
-    if (fDone >= 0.9999)                         note = 'tudo já gasto';
-    else if (fLeft >= 0.9999)                    note = 'tudo por gastar';
+    if (fDone >= 0.9999)                         note = 'já gasto';
+    else if (fLeft >= 0.9999)                    note = '';
     else if (fDone <= 0.0001 && fLeft <= 0.0001) note = 'fora do horizonte';
     else                                         note = `${fmt(fDone * 100, 0)}% já gasto`;
 
@@ -387,7 +397,9 @@ function calc() {
   html += `<div class="line"><span>Necessidade base (${fmt(rate,1)}%/h)</span><span>${fmt(base,1)}%</span></div>`;
   html += `<div class="line"><span>Gasto extra por gastar</span><span>${fmt(extra,1)}%</span></div>`;
   lines.forEach(l => {
-    html += `<div class="line row-line"><span>linha ${l.i+1}${l.nome ? ' (' + l.nome + ')' : ''}: ${fmt(l.P,1)}% (${l.win}) — ${l.note}</span><span>${fmt(l.contrib,1)}%</span></div>`;
+    const lbl = l.nome ? l.nome : 'linha ' + (l.i + 1);
+    const w = l.win === '—→—' ? '' : ' · ' + l.win;
+    html += `<div class="line row-line"><span>${lbl}${w}${l.note ? ' · ' + l.note : ''}</span><span>${fmt(l.contrib,1)}%</span></div>`;
   });
   if (hasBat) {
     if (elapsed >= 1 / 60) {
@@ -460,7 +472,8 @@ function readState() {
       pct: r.querySelector('.pct').value,
       de:  r.querySelector('.de').value,
       ate: r.querySelector('.ate').value,
-      nome: r.querySelector('.nome').value
+      nome: r.querySelector('.nome').value,
+      on: !r.classList.contains('off')
     });
   });
   return {
@@ -493,7 +506,7 @@ function applyState(s) {
   if (s.obj)  document.getElementById('obj').value  = s.obj;
   if (s.rate) document.getElementById('rate').value = s.rate;
   rowsEl.innerHTML = '';
-  if (Array.isArray(s.rows)) s.rows.forEach(r => addRow(r.pct || '', r.de || '', r.ate || '', r.nome || ''));
+  if (Array.isArray(s.rows)) s.rows.forEach(r => addRow(r.pct || '', r.de || '', r.ate || '', r.nome || '', r.on !== false));
   calc();
 }
 
